@@ -1,0 +1,15 @@
+{
+  "name": "@keithclark/rollup-plugin-appkit",
+  "version": "1.0.0",
+  "main": "plugin.mjs",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Keith Clark",
+  "license": "MIT",
+  "description": "",
+  "dependencies": {
+    "@keithclark/tiny-parsers": "git+https://github.com/keithclark/tiny-parsers#89b32715d914f27ae8bbf3144a104bc98ef6d66a"
+  }
+}
