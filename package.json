@@ -10,6 +10,6 @@
   "license": "MIT",
   "description": "",
   "dependencies": {
-    "@keithclark/tiny-parsers": "git+https://github.com/keithclark/tiny-parsers#89b32715d914f27ae8bbf3144a104bc98ef6d66a"
+    "@keithclark/tiny-parsers": "git+https://github.com/keithclark/tiny-parsers#ca513f784a43305c1bf450f8ecf4de2cfbc9fd40"
   }
 }
