@@ -1,25 +1,25 @@
-import { parse, resolve } from 'node:path';
+import { dirname, parse, resolve } from 'node:path';
 import { createScriptFromHtmlFragment, minify as minifyHtml, createAppIndexDocument } from './lib/assets/html.mjs';
 import { createScriptFromStylesheet, minify as minifyCss } from './lib/assets/css.mjs';
 import { createManifest } from './lib/assets/manifest.mjs';
 import { parseCss, parseHtml, stringifyCss } from '@keithclark/tiny-parsers';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 
 /**
- * @typedef {import('/Users/keithclark/.npm/lib/node_modules/rollup/dist/rollup.d.ts').Plugin} Plugin
- * @typedef {import('/Users/keithclark/.npm/lib/node_modules/rollup/dist/rollup.d.ts').EmittedFile} EmittedFile 
+ * @typedef {import('rollup').Plugin} Plugin
+ * @typedef {import('rollup').EmittedFile} EmittedFile 
  */
 /**
  * @typedef AppkitPluginOptions
- * @property {string} [name] The name of the application. Required for PWAs
+ * @property {string} [name] The name of the application. Required for PWAs. Defaults to "name" in "package.json"
  * @property {string} [version] The version of the application. Defaults to "version" in "package.json"
  * @property {string} [description] A short description of the application.
  * @property {string} [icon] The path to the application icon. Required for PWAs
  * @property {string} [image] The path to the application image. Used for Open Graph metadata
  * @property {string} [url] The URL the application will be served from.
  * @property {boolean} [manifest=false] Should a manifest.json be generated for this application
+ * @property {boolean} [dynamicTypes=false] Should type definitions be generated for imported CSS and HTML dependencies
  */
-
 
 /**
  * @param {AppkitPluginOptions} opts The plugin options
@@ -30,6 +30,7 @@ export default (opts = {}) => {
   opts.name ??= process.env.npm_package_name;
   opts.version ??= process.env.npm_package_version;
   opts.url ??= '';
+  opts.dynamicTypes ??= false;
 
   /** @type {Map<string,EmittedFile>} */
   let emitted = new Map();
@@ -43,6 +44,15 @@ export default (opts = {}) => {
     return `${base}${url}`;
   }
 
+  const writeTypeFile = (id, code) => {
+    if (!id.startsWith(process.env.npm_config_local_prefix)) {
+      return this.error('File path');
+    }
+    const localName = '@types' + id.slice(process.env.npm_config_local_prefix.length) + '.d.ts';
+    const localPath = resolve(process.env.npm_config_local_prefix, localName);
+    mkdir(dirname(localPath), { recursive: true }).then(()=>writeFile(localPath, code));
+  }
+
   return {
     name: "appkit",
 
@@ -50,8 +60,12 @@ export default (opts = {}) => {
       if (id.endsWith('.css')) {
         const stylesheet = parseCss(code);
         minifyCss(stylesheet);
+        const { defs, code: source } = createScriptFromStylesheet(stylesheet);
+        if (opts.dynamicTypes) {
+          writeTypeFile(id, defs);
+        }
         return {
-          code: createScriptFromStylesheet(stylesheet),
+          code: source,
           moduleSideEffects: false,
           map: null
         }
@@ -59,8 +73,12 @@ export default (opts = {}) => {
       if (id.endsWith('.html')) {
         const document = parseHtml(code);
         minifyHtml(document);
+        const {defs, code: source} = createScriptFromHtmlFragment(document);
+        if (opts.dynamicTypes) {
+          writeTypeFile(id, defs)
+        }
         return {
-          code: createScriptFromHtmlFragment(document),
+          code: source,
           moduleSideEffects: false,
           map: null
         }

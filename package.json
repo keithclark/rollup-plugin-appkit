@@ -11,5 +11,8 @@
   "description": "",
   "dependencies": {
     "@keithclark/tiny-parsers": "git+https://github.com/keithclark/tiny-parsers#ca513f784a43305c1bf450f8ecf4de2cfbc9fd40"
+  },
+  "devDependencies": {
+    "rollup": "^4.0.0"
   }
 }
