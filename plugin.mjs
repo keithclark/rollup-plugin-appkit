@@ -1,9 +1,13 @@
 import { dirname, parse, resolve } from 'node:path';
-import { createScriptFromHtmlFragment, minify as minifyHtml, createAppIndexDocument } from './lib/assets/html.mjs';
-import { createScriptFromStylesheet, minify as minifyCss } from './lib/assets/css.mjs';
-import { createManifest } from './lib/assets/manifest.mjs';
-import { parseCss, parseHtml, stringifyCss } from '@keithclark/tiny-parsers';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
+
+// Content generators
+import generateIndexDocument from './lib/generators/indexDocument.mjs'
+import generateManifest from './lib/generators/manifest.mjs'
+
+// Content transformers
+import transformHtml from './lib/transformers/html.mjs'
+import transformCss from './lib/transformers/css.mjs'
 
 /**
  * @typedef {import('rollup').Plugin} Plugin
@@ -18,7 +22,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
  * @property {string} [image] The path to the application image. Used for Open Graph metadata
  * @property {string} [url] The URL the application will be served from.
  * @property {boolean} [manifest=false] Should a manifest.json be generated for this application
- * @property {boolean} [dynamicTypes=false] Should type definitions be generated for imported CSS and HTML dependencies
+ * @property {boolean} [dynamicTypes=true] Should type definitions be generated for imported CSS and HTML dependencies
  */
 
 /**
@@ -30,78 +34,78 @@ export default (opts = {}) => {
   opts.name ??= process.env.npm_package_name;
   opts.version ??= process.env.npm_package_version;
   opts.url ??= '';
-  opts.dynamicTypes ??= false;
+  opts.dynamicTypes ??= true;
 
-  /** @type {Map<string,EmittedFile>} */
-  let emitted = new Map();
-
+  const manifestFile = 'manifest.json';
   const indexFile = 'index.html';
+  const typesDir = '@types';
+
+  const basePath = process.env.npm_config_local_prefix;
 
   const resolveUrl = (url, base = opts.url) => {
     if (base && !base.endsWith('/')) {
-      base += '/'
+      base += '/';
     }
     return `${base}${url}`;
-  }
+  };
 
   const writeTypeFile = (id, code) => {
-    if (!id.startsWith(process.env.npm_config_local_prefix)) {
+    if (!id.startsWith(basePath)) {
       return this.error('File path');
     }
-    const localName = '@types' + id.slice(process.env.npm_config_local_prefix.length) + '.d.ts';
-    const localPath = resolve(process.env.npm_config_local_prefix, localName);
+    const localName = typesDir + id.slice(basePath.length) + '.d.ts';
+    const localPath = resolve(basePath, localName);
     mkdir(dirname(localPath), { recursive: true }).then(()=>writeFile(localPath, code));
-  }
+  };
 
   return {
     name: "appkit",
 
-    transform(code, id) {
-      if (id.endsWith('.css')) {
-        const stylesheet = parseCss(code);
-        minifyCss(stylesheet);
-        const { defs, code: source } = createScriptFromStylesheet(stylesheet);
-        if (opts.dynamicTypes) {
-          writeTypeFile(id, defs);
-        }
-        return {
-          code: source,
-          moduleSideEffects: false,
-          map: null
-        }
-      }
-      if (id.endsWith('.html')) {
-        const document = parseHtml(code);
-        minifyHtml(document);
-        const {defs, code: source} = createScriptFromHtmlFragment(document);
-        if (opts.dynamicTypes) {
-          writeTypeFile(id, defs)
-        }
-        return {
-          code: source,
-          moduleSideEffects: false,
-          map: null
-        }
-      }
-    },
+    async transform(code, id) {
+      let transformedCode;
 
-    async moduleParsed(moduleInfo) {
+      if (id.endsWith('.css')) {
+        transformedCode = transformCss(code);
+      } else if (id.endsWith('.html')) {
+        transformedCode = transformHtml(code);
+      }
+
+      // If the code was transformed then we can return it as an ES module.
+      if (transformedCode) {
+        if (opts.dynamicTypes) {
+          writeTypeFile(id, transformedCode.typeDefinitions);
+        }
+        return {
+          ast: this.parse(transformedCode.module),
+          code: transformedCode.module,
+          moduleSideEffects: false,
+          map: null,
+          meta: {
+            raw: transformedCode.code
+          }
+        }
+      }
+
+
+      // If we get here then the source code should be JavaScript. 
+      const program = this.parse(code);
+
       // Look for top-level HTML and CSS `import` declarations to determine if 
       // their original contents need to be emitted as a file in the final 
       // bundle because they were imported for side-effect purposes (i.e 
       // `import 'index.html'`)
-      for (const node of moduleInfo.ast.body) {
+      for (const node of program.body) {
         if (node.type !== 'ImportDeclaration') {
           continue;
-        }
+        } 
 
         const { ext, base } = parse(node.source.value);
         if (ext !== '.css' && ext !== '.html') {
           continue;
         }
 
-        // No named or default exports means side-effects, which in this case is
-        // copy the file
+        // Not having named or default exports means this file is being imported
+        // for side-effects, which means the asset must be added to the bundle.
         let emit = node.specifiers.length === 0;
 
         // For HTML files we will still need to emit the file if importing an 
@@ -116,6 +120,7 @@ export default (opts = {}) => {
           continue;
         }
 
+        /** @type {string} */
         let path;
 
         // Try and resolve this import in case it's a node module
@@ -124,40 +129,40 @@ export default (opts = {}) => {
           path = resolved.id;
         } else {
           // The import is local, resolve it the to current module
-          path = resolve(parse(moduleInfo.id).dir, node.source.value)
+          path = resolve(parse(id).dir, node.source.value);
         }
 
-        if (!emitted.has(path)) {
-          emitted.set(path, {
-            type: 'asset',
-            source: (await readFile(path)).toString(),
-            originalFileName: path,
-            name: base === indexFile ? null : base,
-            fileName: base === indexFile ? base : null,
-          });
+        const moduleInfo = await this.load({ id: path });
 
-          // test inline minification
-          if (path.endsWith('.css')) {
-            const stylesheet = parseCss(emitted.get(path).source);
-            emitted.get(path).source = stringifyCss(stylesheet);
-          }
-        }
-      
+        this.emitFile({
+          type: 'asset',
+          source: moduleInfo.meta.raw,
+          originalFileName: path,
+          name: base === indexFile ? null : base,
+          fileName: base === indexFile ? base : null,
+        });
+
+        // Since this is loaded as a side-effect we need to watch the original
+        // file so we can rebuild the asset if it changes.
+        this.addWatchFile(path);
       }
+
+      return {
+        ast: program,
+        code,
+        map: null
+      };
+      
     },
+
 
     async generateBundle(output, bundle) {
 
+      
+      //console.log(bundle)
       let imageUrl;
       let iconUrl;
-      let manifestUrl;
-
-
-      for (const asset of emitted.values()) {
-        this.emitFile(asset);
-      }
-
-      emitted.clear()
+      let manifestUrl = null;
 
       // Create the Icon image asset if it's required
       if (opts.icon) {
@@ -181,27 +186,31 @@ export default (opts = {}) => {
 
       // Create the `manifest.json` asset if it's required
       if (opts.manifest) {
+        const missing = [];
         if (!iconUrl) {
-          this.error('Cannot create a manifest file without an application icon');
+          missing.push('icon');
         }
         if (!opts.url) {
-          this.error('Cannot create a manifest file without an application URL');
+          missing.push('URL');
         }
         if (!opts.name) {
-          this.error('Cannot create a manifest file without an application name');
+          missing.push('name');
         }
 
-        const fileName = 'manifest.json';
-        this.emitFile({
-          type: 'asset',
-          source: createManifest({
-            name: opts.name,
-            url: opts.url,
-            icon: iconUrl
-          }),
-          fileName
-        });
-        manifestUrl = resolveUrl(fileName);
+        if (missing.length) {
+          this.warn(`Cannot create a manifest file. Missing application ${missing.join(' and ')}`);
+        } else {
+          this.emitFile({
+            type: 'asset',
+            source: generateManifest({
+              name: opts.name,
+              url: opts.url,
+              icon: iconUrl
+            }),
+            fileName: manifestFile
+          });
+          manifestUrl = resolveUrl(manifestFile);
+        }
       }
 
       if (indexFile in bundle) {
@@ -216,18 +225,18 @@ export default (opts = {}) => {
         });
 
         const stylesheets = Object.entries(bundle).filter(([_, item]) => {
-          return item.fileName.endsWith('.css');
+          return item.type === 'asset' && item.fileName.endsWith('.css');
         }).map(([file, data]) => {
           return {
             url: resolveUrl(file)
           }
         });
 
-        indexDocument.source = createAppIndexDocument(indexDocument.source, {
+        indexDocument.source = generateIndexDocument(indexDocument.source, {
           title: opts.name,
           url: opts.url,
           description: opts.description,
-          manifestUrl: opts.manifest,
+          manifestUrl,
           imageUrl,
           iconUrl,
           scripts,
