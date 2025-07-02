@@ -215,14 +215,13 @@ export default (opts = {}) => {
 
       if (indexFile in bundle) {
         const indexDocument = bundle[indexFile];
-        
-        const scripts = Object.entries(bundle).filter(([_, item]) => {
+
+        const scripts = Object.values(bundle).filter((item) => {
           return item.type === 'chunk';
-        }).map(([file, data]) => {
-          return {
-            url: resolveUrl(file)
-          }
-        });
+        }).map((file) => ({
+          url: resolveUrl(file.fileName),
+          isEsModule: output.format === 'es'
+        }));
 
         const stylesheets = Object.entries(bundle).filter(([_, item]) => {
           return item.type === 'asset' && item.fileName.endsWith('.css');
