@@ -55,11 +55,18 @@ export default (opts = {}) => {
     }
     const localName = typesDir + id.slice(basePath.length) + '.d.ts';
     const localPath = resolve(basePath, localName);
-    mkdir(dirname(localPath), { recursive: true }).then(()=>writeFile(localPath, code));
+    mkdir(dirname(localPath), { recursive: true }).then(() => writeFile(localPath, code));
   };
 
+  const sideEffectAssetMap = new Map();
+  const transformedAssetIds = new Set();
+  let firstRun = true;
   return {
     name: "appkit",
+
+    buildStart() {
+      transformedAssetIds.clear();
+    },
 
     async transform(code, id) {
       let transformedCode;
@@ -72,7 +79,11 @@ export default (opts = {}) => {
 
       // If the code was transformed then we can return it as an ES module.
       if (transformedCode) {
+        this.debug('Asset transformed');
+
+        transformedAssetIds.add(id);
         if (opts.dynamicTypes) {
+          this.debug('Generating type defintions');
           writeTypeFile(id, transformedCode.typeDefinitions);
         }
         return {
@@ -86,6 +97,15 @@ export default (opts = {}) => {
         }
       }
 
+      // Remove any reference of this module from the current list of
+      // sideEffect imported assets.
+      this.debug('Removing existing side-effect asset references');
+      for (const [assetId, importers] of sideEffectAssetMap.entries()) {
+        importers.delete(id);
+        if (importers.size === 0) {
+          sideEffectAssetMap.delete(assetId);
+        }
+      }
 
       // If we get here then the source code should be JavaScript. 
       const program = this.parse(code);
@@ -99,7 +119,7 @@ export default (opts = {}) => {
           continue;
         } 
 
-        const { ext, base } = parse(node.source.value);
+        const { ext } = parse(node.source.value);
         if (ext !== '.css' && ext !== '.html') {
           continue;
         }
@@ -130,21 +150,17 @@ export default (opts = {}) => {
         } else {
           // The import is local, resolve it the to current module
           path = resolve(parse(id).dir, node.source.value);
+        }   
+
+        let mapItem = sideEffectAssetMap.get(path);
+        if (!mapItem) {
+          mapItem = new Set();
+          sideEffectAssetMap.set(path, mapItem);
         }
-
-        const moduleInfo = await this.load({ id: path });
-
-        this.emitFile({
-          type: 'asset',
-          source: moduleInfo.meta.raw,
-          originalFileName: path,
-          name: base === indexFile ? null : base,
-          fileName: base === indexFile ? base : null,
-        });
-
-        // Since this is loaded as a side-effect we need to watch the original
-        // file so we can rebuild the asset if it changes.
-        this.addWatchFile(path);
+        if (!mapItem.has(id)) {
+          mapItem.add(id);
+          this.debug(`Added side-effect reference to asset ${path}`);
+        }
       }
 
       return {
@@ -157,62 +173,87 @@ export default (opts = {}) => {
 
 
     async generateBundle(output, bundle) {
-
-      
-      //console.log(bundle)
       let imageUrl;
       let iconUrl;
       let manifestUrl = null;
 
-      // Create the Icon image asset if it's required
-      if (opts.icon) {
-        const referenceId = this.emitFile({
-          type: 'asset',
-          source: await readFile(opts.icon),
-          name: parse(opts.icon).base
-        });
-        iconUrl = resolveUrl(this.getFileName(referenceId));
-      }
-
-      // Create the Open Graph image asset if it's required
-      if (opts.image) {
-        const referenceId = this.emitFile({
-          type: 'asset',
-          source: await readFile(opts.image),
-          name: parse(opts.image).base
-        });
-        imageUrl = resolveUrl(this.getFileName(referenceId));
-      }
-
-      // Create the `manifest.json` asset if it's required
-      if (opts.manifest) {
-        const missing = [];
-        if (!iconUrl) {
-          missing.push('icon');
-        }
-        if (!opts.url) {
-          missing.push('URL');
-        }
-        if (!opts.name) {
-          missing.push('name');
-        }
-
-        if (missing.length) {
-          this.warn(`Cannot create a manifest file. Missing application ${missing.join(' and ')}`);
-        } else {
-          this.emitFile({
+      // Walk through the assets we've identified as loaded for side-effect 
+      // purposes and check to see if they were transformed during the build.
+      // If they were, add them to the bundle.
+      for (const id of sideEffectAssetMap.keys()) {
+        if (transformedAssetIds.has(id)) {
+          const { ext, base } = parse(id);
+          this.debug(`${id} needs to be bundled`);
+          const moduleInfo = this.getModuleInfo(id);
+          const emitted = {
             type: 'asset',
-            source: generateManifest({
-              name: opts.name,
-              url: opts.url,
-              icon: iconUrl
-            }),
-            fileName: manifestFile
-          });
-          manifestUrl = resolveUrl(manifestFile);
+            source: moduleInfo.meta.raw,
+            originalFileName: id,
+            name: base === indexFile ? null : base,
+            fileName: base === indexFile ? base : null
+          };
+          this.emitFile(emitted);
         }
       }
 
+      // Generate dependencies that only need building on the first run of the
+      // plugin. These files are config dependant, so will be rebuilt whenever
+      // the rollup config is changed.
+      if (firstRun) {
+
+        // Create the Icon image asset if it's required
+        if (opts.icon) {
+          const referenceId = this.emitFile({
+            type: 'asset',
+            source: await readFile(opts.icon),
+            name: parse(opts.icon).base
+          });
+          iconUrl = resolveUrl(this.getFileName(referenceId));
+        }
+
+        // Create the Open Graph image asset if it's required
+        if (opts.image) {
+          const referenceId = this.emitFile({
+            type: 'asset',
+            source: await readFile(opts.image),
+            name: parse(opts.image).base
+          });
+          imageUrl = resolveUrl(this.getFileName(referenceId));
+        }
+
+        // Create the `manifest.json` asset if it's required
+        if (opts.manifest) {
+          const missing = [];
+          if (!iconUrl) {
+            missing.push('icon');
+          }
+          if (!opts.url) {
+            missing.push('URL');
+          }
+          if (!opts.name) {
+            missing.push('name');
+          }
+
+          if (missing.length) {
+            this.warn(`Cannot create a manifest file. Missing application ${missing.join(' and ')}`);
+          } else {
+            this.emitFile({
+              type: 'asset',
+              source: generateManifest({
+                name: opts.name,
+                url: opts.url,
+                icon: iconUrl
+              }),
+              fileName: manifestFile
+            });
+            manifestUrl = resolveUrl(manifestFile);
+          }
+        }
+        firstRun = false;
+      }
+
+      
+      // Build the app index page
       if (indexFile in bundle) {
         const indexDocument = bundle[indexFile];
 
@@ -223,14 +264,14 @@ export default (opts = {}) => {
           isEsModule: output.format === 'es'
         }));
 
-        const stylesheets = Object.entries(bundle).filter(([_, item]) => {
+        const stylesheets = Object.values(bundle).filter((item) => {
           return item.type === 'asset' && item.fileName.endsWith('.css');
-        }).map(([file, data]) => {
-          return {
-            url: resolveUrl(file)
-          }
-        });
+        }).map((file) => ({
+          url: resolveUrl(file.fileName)
+        }));
 
+
+        // Generate the final index page
         indexDocument.source = generateIndexDocument(indexDocument.source, {
           title: opts.name,
           url: opts.url,
