@@ -1,4 +1,4 @@
-## What does it do?
+# What does it do?
 
 * **HTML imports**: import individual DOM nodes, or an entire HTML document into your application.
 * **CSS Imports**: import stylesheets into your application.
@@ -6,13 +6,13 @@
 * **Manifest**: Generates a `manifest.json` for your application.
 * **Types**: Generates type definitions for imported CSS and HTML.
 
-# Install
+## Install
 
 ```
 npm -i @keithclark/rollup-plugin-appkit
 ```
 
-# Usage
+## Usage
 
 ```js
 import appkit from '@keithclark/rollup-plugin-appkit';
@@ -31,7 +31,7 @@ export default {
 }
 ```
 
-## Options
+### Options
 
 Name | Type | Description
 -|-|-
@@ -49,6 +49,19 @@ Name | Type | Description
 # Documentation
 
 ## HTML Imports
+
+Appkit can import HTML documents and element references directly into JavaScript.
+
+```js
+/* Side-effect import: Adds "index.html" to the bundle */
+import './index.html';
+
+/* Named import: Reference to `HTMLElement` with `id="title"` in "index.html". "index.html" is added to the bundle */
+import { title } from './index.html';
+
+/* Default import: The entire document as a `DocumentFragment`. "index.html" is not added to the bundle */
+import fragment from './index.html';   
+```
 
 ### `default` import
 
@@ -86,7 +99,7 @@ document$1.querySelector('#title').textContent = 'Hello World';
 
 ### Named imports
 
-Each element in the document with an `id` attribute is exported as an `HTMLElement` from the module using its ID as a named export. Internally, a named import resolves to a `document.getElementById()` statement, which requires the source document to be in the rollup bundle. The plugin will automatically handle this for you, adding any missing HTML document structure. It will also add a `<script>` element referencing the script that imported it.
+Each element in the document with an `id` attribute is exported as an `HTMLElement` from the module using its ID as a named export. Internally, a named import resolves to a `document.getElementById()` statement, which requires the HTML document to be included the rollup bundle. The plugin will automatically handle this for you, adding any missing HTML document structure. It will also add a `<script>` element referencing the script that imported it.
 
 #### Example input 
 
@@ -130,7 +143,7 @@ title.textContent = 'Hello world!';
 
 ### Side-effect imports
 
-A side-effect import will result in rollup copying the HTML document to the build directory. As with named imports, any missing HTML document structure will be added along with a `<script>` element referencing the script that imported it.
+A side-effect import will result in rollup adding a minfied version of the HTML document to the build directory. As with named imports, any missing HTML document structure will be added along with a `<script>` element referencing the script that imported it. If the rollup is configured generate an ES module, a `type="module"` attribute will also be added.
 
 #### Example input 
 
@@ -206,7 +219,7 @@ this.shadowRoot.adoptedStyleSheets.push(stylesheet); // (if in a Web Component)
 
 ### Side-effect imports
 
-A side-effect import will result in rollup copying the CSS document to the output directory. If the application also imports a HTML document, a link to the stylesheet is automatically added to the `<heaad>` element.
+A side-effect import will result in rollup adding a minfied version of the stylesheet to the output directory. If the application also imports a HTML document, a link to the stylesheet is automatically added to the `<head>` element.
 
 #### Example input 
 
