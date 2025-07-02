@@ -12,7 +12,8 @@ equal(
   '<link rel="preconnect" href="https://fonts.gstatic.com">\n' +
   '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins&#38;display=swap">\n' +
   '<meta name="theme-color" content="#eeeeee" media="(prefers-color-scheme: light)">\n' +
-  '<meta name="apple-mobile-web-app-capable" content="yes">\n' +
+  '<meta name="theme-color" content="#22262d" media="(prefers-color-scheme: dark)">\n' +
+ '<meta name="apple-mobile-web-app-capable" content="yes">\n' +
   '<meta property="og:type" content="website">\n' +
   '</head>\n' +
   '<body></body>\n' +
