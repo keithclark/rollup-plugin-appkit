@@ -9,7 +9,7 @@
 ## Install
 
 ```
-npm -i @keithclark/rollup-plugin-appkit
+npm i git+https://github.com/keithclark/rollup-plugin-appkit
 ```
 
 ## Usage
