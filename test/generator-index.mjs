@@ -91,3 +91,27 @@ match(
   /<head>[\w\W]*?<link rel="canonical" href="https:\/\/test.com">[\w\W]*?<\/head>/,
   'If `url` is passed, a canonical <link> element should be added to the document'
 );
+
+match(
+  generator('', {iconUrl: 'icon.png'}), 
+  /<head>[\w\W]*<link rel="apple-touch-icon" href="icon.png">[\w\W]*?<\/head>/,
+  'If `iconUrl` is passed, a <link> element for the apple-touch-icon should be added to the document'
+);
+
+match(
+  generator('', {iconUrl: 'icon.png'}), 
+  /<head>[\w\W]*<link rel="apple-touch-icon" href="icon.png">[\w\W]*?<\/head>/,
+  'If `iconUrl` is passed, a <link> element for shortcut icon should be added to the document'
+);
+
+match(
+  generator('', {manifestUrl: 'manifest.json'}), 
+  /<head>[\w\W]*<link rel="manifest" href="manifest.json">[\w\W]*?<\/head>/,
+  'If `manifestUrl` is passed, a <link> element for manifest should be added to the document'
+);
+
+match(
+  generator('', {image: 'image.webp'}), 
+  /<head>[\w\W]*<meta property="og:image" content="image.webp">[\w\W]*?<\/head>/,
+  'If `image` is passed, a <meta property="og:image"> element should be added to the document'
+);
