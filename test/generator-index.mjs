@@ -83,11 +83,11 @@ match(
 match(
   generator('', {url: 'https://test.com'}), 
   /<head>[\w\W]*?<meta property="og:url" content="https:\/\/test.com">[\w\W]*?<\/head>/,
-  'If `title` is passed, a <title> element should be added to the document'
+  'If `url` is passed, a <meta property="og:url"> element should be added to the document'
 );
 
 match(
   generator('', {url: 'https://test.com'}), 
   /<head>[\w\W]*?<link rel="canonical" href="https:\/\/test.com">[\w\W]*?<\/head>/,
-  'If `title` is passed, a <title> element should be added to the document'
+  'If `url` is passed, a canonical <link> element should be added to the document'
 );
