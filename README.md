@@ -1,10 +1,12 @@
 # What does it do?
 
-* **HTML imports**: import individual DOM nodes, or an entire HTML document into your application.
-* **CSS Imports**: import stylesheets into your application.
+rollup-plugin-appkit was designed to simplify building applications and Web Components in my AppKit framework. Although it was written for AppKit, it can be used in any Rollup-based project.
+
+* **HTML imports**: Import an entire HTML document as a `DocumentFragment`, or references to individual `HTMLElement`s using their ID attribute.
+* **CSS Imports**: Import a stylesheet as `CSSStyleSheet`.
 * **Application host document**: Builds the index page that serves your application.
 * **Manifest**: Generates a `manifest.json` for your application.
-* **Types**: Generates type definitions for imported CSS and HTML.
+* **Types**: Optionally generates TypeScript `.d.ts` files for imported stylesheets and HTML fragments / elements.
 
 ## Install
 
@@ -35,16 +37,90 @@ export default {
 
 Name | Type | Description
 -|-|-
-`name` | string | The name of the application. Required for PWAs. Defaults to `name` in `package.json`
+`name` | string | The name of the application. Required for manifests. Defaults to `name` in `package.json`
 `version` | string | The version of the application. Defaults to `version` in `package.json`
 `description` | string | A short description of the application.
-`icon` | string | The path to the application icon. Required for PWAs.
+`icon` | string | The path to the application icon. Required for manifests.
 `image` | string | The path to the application image. Used for Open Graph metadata.
-`url` | string | The URL the application will be served from. Required for PWAs.
+`url` | string | The URL the application will be served from. Required for manifests.
 `manifest` | boolean | Should a `manifest.json` be generated for this application. Defaults to `false`.
 `dynamicTypeDefinitions` | boolean | Should TypeScript definitions be generated for CSS and HTML imports. Defaults to `true`.
 
+## Example
 
+Given the following input:
+
+`rollup.config.js`:
+```js
+import appkit from '@keithclark/rollup-plugin-appkit';
+
+const version = process.env.npm_package_version;
+
+export default [{
+  input: 'src/app.js',
+  output: {
+    format: 'cjs',
+    sourcemap: true,
+    dir: './public',
+    entryFileNames: `build-${version}.js`,
+    assetFileNames: `[name]-${version}[extname]`
+  },
+  plugins:[
+    appkit()
+  ]
+}]
+```
+
+`src/app.js`:
+```js
+import './styles.css';
+import { title } from './index.html';
+
+title.textContent = 'Hello World!';
+```
+
+
+`src/index.html`:
+```html
+<h1 id="title"></h1>
+```
+
+`src/styles.css`:
+```css
+h1 {
+  color: red;
+}
+```
+
+Rollup will generate:
+
+`public/build-1.0.0.js`:
+```js
+const title = document.getElementById('title');
+title.textContent = 'Hello World!';
+```
+
+`public/styles-1.0.0.css`:
+```css
+h1{color:red}
+```
+
+`public/index.html`:
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="styles-1.0.0.css">
+<!-- Note: other elements removed for brevity -->
+</head>
+<body>
+<h1 id="title"></h1>
+<script src="build-1.0.0.js"></script>
+</body>
+</html>
+```
 
 # Documentation
 
@@ -53,14 +129,17 @@ Name | Type | Description
 Appkit can import HTML documents and element references directly into JavaScript.
 
 ```js
-/* Side-effect import: Adds "index.html" to the bundle */
+/* Side-effect import: "index.html" will be added to the bundle */
 import './index.html';
 
-/* Named import: Reference to `HTMLElement` with `id="title"` in "index.html". "index.html" is added to the bundle */
+/* Default import: `fragment` will contain a `DocumentFragment` populated with the contents of "index.html". The file "index.html" will NOT be added to the bundle */
+import fragment from './index.html';
+
+/* Named import: `title` will be reference to the `HTMLElement` with `id="title"` in "index.html". "index.html" will be added to the bundle */
 import { title } from './index.html';
 
-/* Default import: The entire document as a `DocumentFragment`. "index.html" is not added to the bundle */
-import fragment from './index.html';   
+/* Mixed import: See comments above. "index.html" will be added to the bundle because of the named import */
+import fragment, { title } from './index.html';   
 ```
 
 ### `default` import

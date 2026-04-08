@@ -8,12 +8,9 @@ equal(
   '<head>\n' +
   '<meta charset="utf-8">\n' +
   '<meta name="viewport" content="width=device-width,initial-scale=1">\n' +
-  '<link rel="preconnect" href="https://fonts.googleapis.com">\n' +
-  '<link rel="preconnect" href="https://fonts.gstatic.com">\n' +
-  '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins&#38;display=swap">\n' +
   '<meta name="theme-color" content="#eeeeee" media="(prefers-color-scheme: light)">\n' +
   '<meta name="theme-color" content="#22262d" media="(prefers-color-scheme: dark)">\n' +
- '<meta name="apple-mobile-web-app-capable" content="yes">\n' +
+  '<meta name="apple-mobile-web-app-capable" content="yes">\n' +
   '<meta property="og:type" content="website">\n' +
   '</head>\n' +
   '<body></body>\n' +
@@ -83,11 +80,35 @@ match(
 match(
   generator('', {url: 'https://test.com'}), 
   /<head>[\w\W]*?<meta property="og:url" content="https:\/\/test.com">[\w\W]*?<\/head>/,
-  'If `title` is passed, a <title> element should be added to the document'
+  'If `url` is passed, a <meta property="og:url"> element should be added to the document'
 );
 
 match(
   generator('', {url: 'https://test.com'}), 
   /<head>[\w\W]*?<link rel="canonical" href="https:\/\/test.com">[\w\W]*?<\/head>/,
-  'If `title` is passed, a <title> element should be added to the document'
+  'If `url` is passed, a canonical <link> element should be added to the document'
+);
+
+match(
+  generator('', {iconUrl: 'icon.png'}), 
+  /<head>[\w\W]*<link rel="apple-touch-icon" href="icon.png">[\w\W]*?<\/head>/,
+  'If `iconUrl` is passed, a <link> element for the apple-touch-icon should be added to the document'
+);
+
+match(
+  generator('', {iconUrl: 'icon.png'}), 
+  /<head>[\w\W]*<link rel="apple-touch-icon" href="icon.png">[\w\W]*?<\/head>/,
+  'If `iconUrl` is passed, a <link> element for shortcut icon should be added to the document'
+);
+
+match(
+  generator('', {manifestUrl: 'manifest.json'}), 
+  /<head>[\w\W]*<link rel="manifest" href="manifest.json">[\w\W]*?<\/head>/,
+  'If `manifestUrl` is passed, a <link> element for manifest should be added to the document'
+);
+
+match(
+  generator('', {image: 'image.webp'}), 
+  /<head>[\w\W]*<meta property="og:image" content="image.webp">[\w\W]*?<\/head>/,
+  'If `image` is passed, a <meta property="og:image"> element should be added to the document'
 );

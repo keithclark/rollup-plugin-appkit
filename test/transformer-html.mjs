@@ -33,3 +33,20 @@ partialDeepStrictEqual(
   'HTML transformer should return a JavaScript module containing an exported template and "elementById" list'
 );
    
+partialDeepStrictEqual(
+  html('<!-- test -->\n<div>test</div>\n<!-- test -->'),
+  { code: '<div>test</div>' },
+  'HTML comments should be removed'
+);
+
+partialDeepStrictEqual(
+  html('\n <div> <span> X </span>\n</div>\n'),
+  { code: '<div><span> X </span></div>' },
+  'Whitespace should be normalised'
+);
+
+partialDeepStrictEqual(
+  html(' \n <pre>1\n 2\n  3\n    4</pre> \n '),
+  { code: '<pre>1\n 2\n  3\n    4</pre>' },
+  'Whitespace sensitive element should not have whitespace normalised'
+);

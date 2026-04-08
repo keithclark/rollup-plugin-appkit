@@ -36,6 +36,13 @@ export default (opts = {}) => {
   opts.url ??= '';
   opts.dynamicTypes ??= true;
 
+  /** @type {string} */
+  let imageUrl;
+  /** @type {string} */
+  let iconUrl;
+  /** @type {string} */
+  let manifestUrl;
+
   const manifestFile = 'manifest.json';
   const indexFile = 'index.html';
   const typesDir = '@types';
@@ -51,7 +58,7 @@ export default (opts = {}) => {
 
   const writeTypeFile = (id, code) => {
     if (!id.startsWith(basePath)) {
-      return this.error('File path');
+      throw new Error(`Relative paths not allowed '${id}'`);
     }
     const localName = typesDir + id.slice(basePath.length) + '.d.ts';
     const localPath = resolve(basePath, localName);
@@ -173,12 +180,8 @@ export default (opts = {}) => {
 
 
     async generateBundle(output, bundle) {
-      let imageUrl;
-      let iconUrl;
-      let manifestUrl = null;
-
-      // Walk through the assets we've identified as loaded for side-effect 
-      // purposes and check to see if they were transformed during the build.
+      // Walk through the assets we've identified as "loaded for side-effect 
+      // purposes" and check to see if they were transformed during the build.
       // If they were, add them to the bundle.
       for (const id of sideEffectAssetMap.keys()) {
         if (transformedAssetIds.has(id)) {
@@ -257,6 +260,8 @@ export default (opts = {}) => {
       if (indexFile in bundle) {
         const indexDocument = bundle[indexFile];
 
+
+        // Add `<script>` references
         const scripts = Object.values(bundle).filter((item) => {
           return item.type === 'chunk';
         }).map((file) => ({
@@ -264,15 +269,51 @@ export default (opts = {}) => {
           isEsModule: output.format === 'es'
         }));
 
-        const stylesheets = Object.values(bundle).filter((item) => {
-          return item.type === 'asset' && item.fileName.endsWith('.css');
-        }).map((file) => ({
-          url: resolveUrl(file.fileName)
-        }));
 
+        // Stylesheets
+        const stylesheets = [];
+        for (const [id, v] of sideEffectAssetMap.entries()) {
+          
+          const { base, ext } = parse(id);
+          if (ext !== '.css') {
+            continue
+          }
 
-        // Generate the final index page
-        indexDocument.source = generateIndexDocument(indexDocument.source, {
+          // If this asset has been transformed during build then it will be 
+          // included in the output bundle. Find the resulting asset and get the 
+          // its filename so it can be referenced by `<link rel="stylesheet">`
+          if (transformedAssetIds.has(id)) {
+            const asset = Object.values(bundle).find((i) => {
+              return i.originalFileName === id;
+            })
+            stylesheets.push({
+              url: asset.fileName
+            })
+            continue;
+          }
+
+          // If we get here, the stylesheet asset wasn't transformed so we don't
+          // have access to its resolved filename. To get a filename reference 
+          // we have rollup emit new empty file, grab its name, then immediately
+          // remove the file from the bundle. 
+          const emitted = this.emitFile({
+            type: 'asset',
+            source: '',
+            originalFileName: id,
+            name: base,
+            needsCodeReference: true
+          });
+
+          const fileName = this.getFileName(emitted)
+          delete bundle[fileName]
+
+          stylesheets.push({
+            url: resolveUrl(fileName)
+          });
+        }
+
+        // Generate the final document
+        const indexHtml = generateIndexDocument(indexDocument.source.toString(), {
           title: opts.name,
           url: opts.url,
           description: opts.description,
@@ -282,6 +323,8 @@ export default (opts = {}) => {
           scripts,
           stylesheets
         });
+
+        bundle[indexDocument.fileName].source = indexHtml;
       }
     }
   };
